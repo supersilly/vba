@@ -1,0 +1,205 @@
+Sub ddkq_addtime()
+Dim monthsum As Boolean
+monthsum = False
+For Each sh In Sheets
+  If sh.Name = "打卡时间" Then
+  monthsum = True
+  End If
+Next
+If monthsum Then
+    '判断目标工作表是否存在。。若存在则删除
+    For Each sh In Sheets
+      If sh.Name = "加班统计明细" Or sh.Name = "加班统计汇总" Then
+        Application.DisplayAlerts = False
+        sh.Delete
+        Application.DisplayAlerts = True
+      End If
+    Next
+Else
+    MsgBox ("没找到""打卡时间""，请检查!")
+    Exit Sub
+End If
+
+
+Sheets.Add After:=Sheets(Sheets.Count)
+Sheets(Sheets.Count).Name = "加班统计明细"
+Sheets.Add After:=Sheets(Sheets.Count)
+Sheets(Sheets.Count).Name = "加班统计汇总"
+Dim i, j, m, n As Integer
+ff = Sheets("打卡时间").Cells(3, Columns("D").Column)
+'MsgBox (ff)
+If (ff <> "职位") Then
+  MsgBox ("数据格式不一致，请检查！第3行D列，必须是""职位""")
+  Exit Sub
+End If
+m = 1
+
+Sheets("加班统计明细").Cells(m, 1) = "姓名"
+Sheets("加班统计明细").Cells(m, 2) = "部门"
+Sheets("加班统计明细").Cells(m, 3) = "日期"
+Sheets("加班统计明细").Cells(m, 4) = "当天补助"
+Sheets("加班统计明细").Cells(m, 5) = "加班时长/小时"
+Sheets("加班统计明细").Cells(m, 6) = "加班补助/元"
+m = m + 1
+
+d = 1
+Sheets("加班统计汇总").Cells(d, 1) = "姓名"
+Sheets("加班统计汇总").Cells(d, 2) = "部门"
+Sheets("加班统计汇总").Cells(d, 3) = "总加班时长/小时"
+Sheets("加班统计汇总").Cells(d, 4) = "总加班补助/元"
+d = d + 1
+
+ccol = Sheets("打卡时间").Cells(3, Columns.Count).End(xlToLeft).Column
+rrow = Sheets("打卡时间").Range("A65536").End(xlUp).Row
+'MsgBox ("row is " & rrow & "col is " & ccol)
+
+For j = 4 To rrow
+    'MsgBox (Sheets("打卡时间").Cells(j, 1))
+    staff = Sheets("打卡时间").Cells(j, 1)
+    If staff <> "" Then
+        staffname = Split(Split(Sheets("打卡时间").Cells(j, 1), "（")(0), "(")(0)
+        staffdepart = Sheets("打卡时间").Cells(j, 2)
+        
+        '获取 研发标记
+        If (staffdepart Like "*研发*") Then
+            dev = "yes"
+        Else
+            dev = "no"
+        End If
+        
+        '初始化加班总时长和加班总额
+        addallhour = 0
+        addallmoney = 0
+        
+        '遍历循环 获取每天的打卡时间，并判断加班
+        For n = Columns("F").Column To ccol
+        
+            dev_evening = 30
+            dev_night = 20
+            dev_weekend = 40
+            other_evening = 20
+            other_weekend = 30
+            addmoney = 0
+            addhour = 0
+            indient = ""
+
+            
+
+            con = Sheets("打卡时间").Cells(j, n)
+            If con <> "" Then
+                thisday = Sheets("打卡时间").Cells(3, n)
+                
+                '周六、周日 加班统计明细
+                If thisday = "六" Then
+                    If Sheets("打卡时间").Cells(3, n - 1) = "职位" Then
+                        realday = Sheets("打卡时间").Cells(3, n + 2) - 2
+                    Else
+                        realday = Sheets("打卡时间").Cells(3, n - 1) + 1
+                    End If
+                ElseIf thisday = "日" Then
+                    If Sheets("打卡时间").Cells(3, n - 1) = "职位" Or Sheets("打卡时间").Cells(3, n - 2) = "职位" Then
+                        realday = Sheets("打卡时间").Cells(3, n + 1) - 1
+                    Else
+                        realday = Sheets("打卡时间").Cells(3, n - 2) + 2
+                    End If
+                Else
+                    realday = thisday
+                End If
+
+                'MsgBox ("thisday is: " & realday)
+                
+                'MsgBox (con)
+                alltm = Split(Replace(con, "外勤", "  "), "  ")
+                'If con Like "*外勤*" Then
+                '    MsgBox (alltm(0))
+                'End If
+                
+                alltm = Split(Replace(con, "外勤", "  "), "  ")
+                first_tm = Replace(alltm(0), " ", "")
+                last_tm = Replace(alltm(UBound(alltm) - 1), " ", "")
+
+                
+                '如果是研发，判断首次打卡时间 是否白天打卡，是则有白天补助，然后判断末次打卡，超过20:30 和超过22:00都有补助，并计算时长（小于0.5小时包括只有一次打卡时间不计时长）
+                If dev = "yes" Then
+                    If thisday = "六" Or thisday = "日" Then
+                    '如果是周末，白天给补助，并统计加班
+                        
+                        If TimeValue(first_tm) < TimeValue("20:30") Then
+                            addmoney = addmoney + dev_weekend
+                            indient = indient & " 研发周末白天 " & dev_weekend & ";"
+                        End If
+                        '以半小时为单位，timevalue*24是小时数，转成半小时 取整后，换算成小时
+                        addhour = addhour + Int((TimeValue(last_tm) - TimeValue(first_tm)) * 24 * 60 / 30) / 2
+                    Else
+                    '非周末，统计加班，看下班打卡是否超过20:30，超过的话下班时间减去18:30得到加班时长
+                        If TimeValue(last_tm) >= TimeValue("20:30") Then
+                            addhour = addhour + Int((TimeValue(last_tm) - TimeValue("18:30")) * 24 * 60 / 30) / 2
+                        End If
+                    End If
+                    
+                    '统计平时补助
+                    
+                    If TimeValue(last_tm) >= TimeValue("20:30") Then
+                        addmoney = addmoney + dev_evening
+                        indient = indient & " 研发晚上 " & dev_evening & ";"
+                    End If
+                    If TimeValue(last_tm) >= TimeValue("22:00") Then
+                        addmoney = addmoney + dev_night
+                        indient = indient & " 研发夜里 " & dev_night & ";"
+                    End If
+
+                Else
+                    '如果非研发，判断首末次打卡，并统计时长（小于0.5小时包括只有一次打卡时间，不统计）
+                   If thisday = "六" Or thisday = "日" Then
+                    '如果是周末，白天给补助，并统计加班
+                        If TimeValue(first_tm) < TimeValue("20:00") Then
+                            addmoney = addmoney + other_weekend
+                            indient = indient & " 非研发周末 " & other_weekend & ";"
+                        End If
+                        '以半小时为单位，timevalue*24是小时数，转成半小时 取整后，换算成小时
+                        addhour = addhour + Int((TimeValue(last_tm) - TimeValue(first_tm)) * 24 * 60 / 30) / 2
+                    Else
+                    '非周末，统计加班，看下班打卡是否超过20:00，超过的话下班时间减去18:00得到加班时长
+                        If TimeValue(last_tm) >= TimeValue("20:00") Then
+                            addhour = addhour + Int((TimeValue(last_tm) - TimeValue("18:00")) * 24 * 60 / 30) / 2
+                        End If
+                    End If
+                    
+                    '统计平时补助
+                    
+                    If TimeValue(last_tm) >= TimeValue("20:00") Then
+                        addmoney = addmoney + other_evening
+                        indient = indient & " 非研发晚上 " & other_evening & ";"
+                    End If
+                    
+                End If
+                If addhour <> 0 Then
+                    Sheets("加班统计明细").Cells(m, 1) = staffname
+                    Sheets("加班统计明细").Cells(m, 2) = staffdepart
+                    Sheets("加班统计明细").Cells(m, 3) = realday & "--" & thisday
+                    Sheets("加班统计明细").Cells(m, 4) = indient
+                    Sheets("加班统计明细").Cells(m, 5) = addhour
+                    Sheets("加班统计明细").Cells(m, 6) = addmoney
+                    m = m + 1
+                End If
+                addallhour = addallhour + addhour
+                addallmoney = addallmoney + addmoney
+            End If
+        Next
+        If addallhour <> 0 Then
+            Sheets("加班统计汇总").Cells(d, 1) = staffname
+            Sheets("加班统计汇总").Cells(d, 2) = staffdepart
+            Sheets("加班统计汇总").Cells(d, 3) = addallhour
+            Sheets("加班统计汇总").Cells(d, 4) = addallmoney
+            d = d + 1
+        End If
+    End If
+
+Next
+Sheets("加班统计明细").Columns.EntireColumn.AutoFit
+Sheets("加班统计明细").Rows.EntireRow.AutoFit
+Sheets("加班统计汇总").Columns.EntireColumn.AutoFit
+Sheets("加班统计汇总").Rows.EntireRow.AutoFit
+MsgBox ("加班统计汇总完成！")
+End Sub
+

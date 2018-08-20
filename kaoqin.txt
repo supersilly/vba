@@ -1,0 +1,467 @@
+Sub ddkq_attend()
+Dim monthsum As Boolean
+monthsum = False
+For Each sh In Sheets
+  If sh.Name = "月度汇总" Then
+  monthsum = True
+  End If
+Next
+If monthsum Then
+    '判断目标工作表是否存在。。若存在则删除
+    For Each sh In Sheets
+      If sh.Name = "出勤统计" Then
+        Application.DisplayAlerts = False
+        sh.Delete
+        Application.DisplayAlerts = True
+      End If
+    Next
+Else
+    MsgBox ("没找到""月度汇总""，请检查!")
+    Exit Sub
+End If
+
+
+Sheets.Add After:=Sheets(Sheets.Count)
+Sheets(Sheets.Count).Name = "出勤统计"
+Dim i, j, m, n As Integer
+ff = Sheets("月度汇总").Cells(4, Columns("AG").Column)
+'MsgBox (ff)
+If (ff <> "节假日加班") Then
+  MsgBox ("数据格式不一致，请检查！第4行第AG列，必须是""节假日加班""，后面开始是每天的考勤汇总信息")
+  Exit Sub
+End If
+m = 1
+Sheets("出勤统计").Cells(m, 1) = "姓名"
+Sheets("出勤统计").Cells(m, 2) = "部门"
+Sheets("出勤统计").Cells(m, 3) = "事假/天"
+Sheets("出勤统计").Cells(m, 4) = "病假/天"
+Sheets("出勤统计").Cells(m, 5) = "年假/天"
+Sheets("出勤统计").Cells(m, 6) = "倒休天数/天"
+Sheets("出勤统计").Cells(m, 7) = "倒休时长/小时"
+Sheets("出勤统计").Cells(m, 8) = "出差/天"
+Sheets("出勤统计").Cells(m, 9) = "迟到早退/次数"
+Sheets("出勤统计").Cells(m, 10) = "缺卡/次数"
+Sheets("出勤统计").Cells(m, 11) = "旷工/次数"
+m = m + 1
+'Sheets("dingdingkq").Select
+ccol = Sheets("月度汇总").Cells(4, Columns.Count).End(xlToLeft).Column
+rrow = Sheets("月度汇总").Range("A65536").End(xlUp).Row + 1
+'MsgBox ("row is " & rrow & "col is " & ccol)
+
+For j = 5 To rrow - 1
+    'MsgBox (Sheets("月度汇总").Cells(j, 1))
+    staffname = Split(Split(Sheets("月度汇总").Cells(j, 1), "（")(0), "(")(0)
+    staffdepart = Sheets("月度汇总").Cells(j, 2)
+    If (staffname <> "") Then
+        If (Sheets("月度汇总").Cells(j, 2) Like "*研发*") Then
+            sbtm = "9:30"
+            xbtm = "18:30"
+        Else
+            sbtm = "9:00"
+            xbtm = "18:00"
+        End If
+        
+        '初始化 总计的 事假、事假备注、病假、年假、倒休天数、倒休时长、出差、迟到早退、缺卡、旷工
+        allshijia = 0
+        smshijia = ""
+        allbingjia = 0
+        smbingjia = ""
+        allnianjia = 0
+        alldxday = 0
+        alldxhour = Sheets("月度汇总").Cells(j, Columns("Y").Column)
+        allchuchai = 0
+        allchidao = 0
+        allqueka = 0
+        allkg = 0
+        
+        For n = Columns("AH").Column To ccol
+            '初始化 当天的 事假、病假、年假、倒休天数、倒休时长、出差、迟到早退、缺卡、旷工
+            shijia = 0
+            bingjia = 0
+            nianjia = 0
+            dxday = 0
+            dxhour = 0
+            chuchai = 0
+            chidao = 0
+            queka = 0
+            kg = 0
+
+            con = Sheets("月度汇总").Cells(j, n)
+            'MsgBox (Sheets("月度汇总").Cells(4, n))
+            thisday = Sheets("月度汇总").Cells(4, n)
+            If thisday = "六" Then
+                If Sheets("月度汇总").Cells(4, n - 1) = "节假日加班" Then
+                    thisday = Int(Sheets("月度汇总").Cells(4, n + 2) - 2)
+                Else
+                    thisday = Int(Sheets("月度汇总").Cells(4, n - 1) + 1)
+                End If
+            ElseIf thisday = "日" Then
+                If Sheets("月度汇总").Cells(4, n - 1) = "节假日加班" Or Sheets("月度汇总").Cells(4, n - 2) = "节假日加班" Then
+                    thisday = Int(Sheets("月度汇总").Cells(4, n + 1) - 1)
+                Else
+                    thisday = Int(Sheets("月度汇总").Cells(4, n - 2) + 2)
+                End If
+            Else
+                thisday = Int(thisday)
+            End If
+            'MsgBox ("thisday is: " & thisday)
+            
+            '-----------------shijia事假---------------------所有人  >3h  =0.5d ，>5h = 1d,  合计天数。有请假 <3h  标红
+            If (con Like "*事假*" And Left(con, 2) <> "休息") Then
+                tm = Split(Split(con, "事假")(1), "到")
+                tm1 = Split(tm(0), " ")
+                tm1d = Int(Split(tm1(0), "-")(1))
+                tm1h = tm1(1)
+                tm2 = Split(tm(1), " ")
+                tm2d = Int(Split(tm2(0), "-")(1))
+                tm2h = tm2(1)
+                
+                '请假一天，当天
+                If tm2d = thisday And tm1d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(tm1h)
+                    
+                '请假3天或以上，中间天
+                ElseIf tm1d < thisday And tm2d > thisday Then
+                    timediff = 0.33
+                    
+                '请假2天或以上，最后一天
+                ElseIf tm1d < thisday And tm2d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(sbtm)
+                    
+                '请假2天或以上，第一天
+                ElseIf tm1d = thisday And tm2d > thisday Then
+                    timediff = TimeValue(xbtm) - TimeValue(tm1h)
+                End If
+                
+                td = Round(timediff * 24, 1)
+                    
+                '统计是否有3小时以下的假
+                If td < 3 And td > 0 Then
+                    If td < 1 Then
+                        td = "0" & td
+                    End If
+                    smshijia = smshijia & thisday & "号: " & td & "h事假" & vbCrLf
+                    'MsgBox (smshijia)
+                End If
+                
+                    
+                '事假 >= 3小时，算0.5天
+                If td >= 3 Then
+                    shijia = shijia + 0.5
+                End If
+                    
+                '事假 >= 5小时，再+ 0.5天，算1天
+                If td >= 5 Then
+                    shijia = shijia + 0.5
+                End If
+                allshijia = allshijia + shijia
+                
+                'MsgBox (staffname & " " & thisday & "号: 事假 " & shijia & vbCrLf & "total事假" & allshijia)
+                
+            End If
+            
+            
+            '-----------------bingjia病假--------------------------所有人  >3h  =0.5d ，>5h = 1d,  合计天数。有请假 <3h  标红
+            
+            If (con Like "*病假*" And Left(con, 2) <> "休息") Then
+                tm = Split(Split(con, "病假")(1), "到")
+                tm1 = Split(tm(0), " ")
+                tm1d = Int(Split(tm1(0), "-")(1))
+                tm1h = tm1(1)
+                tm2 = Split(tm(1), " ")
+                tm2d = Int(Split(tm2(0), "-")(1))
+                tm2h = tm2(1)
+                
+                '请假一天，当天
+                If tm2d = thisday And tm1d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(tm1h)
+                    
+                '请假3天或以上，中间天
+                ElseIf tm1d < thisday And tm2d > thisday Then
+                    timediff = 0.33
+                    
+                '请假2天或以上，最后一天
+                ElseIf tm1d < thisday And tm2d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(sbtm)
+                    
+                '请假2天或以上，第一天
+                ElseIf tm1d = thisday And tm2d > thisday Then
+                    timediff = TimeValue(xbtm) - TimeValue(tm1h)
+                End If
+                
+                td = Round(timediff * 24, 1)
+                    
+                '统计是否有3小时以下的假
+                If td < 3 And td > 0 Then
+                    If td < 1 Then
+                        td = "0" & td
+                    End If
+                    smbingjia = smbingjia & thisday & "号:" & td & "h病假" & vbCrLf
+                    'MsgBox (smbingjia)
+                End If
+                    
+                '病假 >= 3小时，算0.5天
+                If td >= 3 Then
+                    bingjia = bingjia + 0.5
+                End If
+                    
+                '病假 >= 5小时，再+ 0.5天，算1天
+                If td >= 5 Then
+                    bingjia = bingjia + 0.5
+                End If
+                allbingjia = allbingjia + bingjia
+                
+                'MsgBox (staffname & " " & thisday & "号: 病假 " & bingjia & vbCrLf & "total病假" & allbingjia)
+                
+            End If
+            
+            
+             '-----------------niajian年假--------------------------dev :  <=2.5h  =0.5d ，>2.5 = 1d   ;  other : <=3h  =0.5d ，>3 = 1d
+            
+            If (con Like "*年假*" Or con Like "*产检假*" Or con Like "*陪产假*" Or con Like "*产假*" Or con Like "*婚假*" Or con Like "*丧假*" And Left(con, 2) <> "休息") Then
+                tm = Split(Split(con, "假")(1), "到")
+                tm1 = Split(tm(0), " ")
+                tm1d = Int(Split(tm1(0), "-")(1))
+                tm1h = tm1(1)
+                tm2 = Split(tm(1), " ")
+                tm2d = Int(Split(tm2(0), "-")(1))
+                tm2h = tm2(1)
+                
+                '请假一天，当天
+                If tm2d = thisday And tm1d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(tm1h)
+                    
+                '请假3天或以上，中间天
+                ElseIf tm1d < thisday And tm2d > thisday Then
+                    timediff = 0.33
+                    
+                '请假2天或以上，最后一天
+                ElseIf tm1d < thisday And tm2d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(sbtm)
+                    
+                '请假2天或以上，第一天
+                ElseIf tm1d = thisday And tm2d > thisday Then
+                    timediff = TimeValue(xbtm) - TimeValue(tm1h)
+                End If
+                
+                td = Round(timediff * 24, 1)
+                
+                '如果是研发  <=2.5h 算 0.5d ，>2.5 算 1d  ;如果不是研发 <=3h 算 0.5d ，>3 算 1d
+                If (Sheets("月度汇总").Cells(j, 2) Like "*研发*") Then
+                    If td > 0 And td <= 2.5 Then
+                        nianjia = 0.5
+                    ElseIf td > 2.5 Then
+                        nianjia = 1
+                    End If
+                Else
+                    If td > 0 And td <= 3 Then
+                        nianjia = 0.5
+                    ElseIf td > 3 Then
+                        nianjia = 1
+                    End If
+                
+                End If
+                
+                allnianjia = allnianjia + nianjia
+                
+                'MsgBox (staffname & " " & thisday & "号: 年假 " & nianjia & vbCrLf & "total年假" & allnianjia)
+                
+            End If
+            
+            
+             '-----------------dxday倒休天数--------------------------统计补助扣除天数： dev >=2.5  =1d , other >=3 = 1d  统计倒休时长:<1h  =1h
+            
+            If (con Like "*调休*" And Left(con, 2) <> "休息") Then
+                tm = Split(Split(con, "调休")(1), "到")
+                tm1 = Split(tm(0), " ")
+                tm1d = Int(Split(tm1(0), "-")(1))
+                tm1h = tm1(1)
+                tm2 = Split(tm(1), " ")
+                tm2d = Int(Split(tm2(0), "-")(1))
+                tm2h = tm2(1)
+                
+                '请假一天，当天
+                If tm2d = thisday And tm1d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(tm1h)
+                    
+                '请假3天或以上，中间天
+                ElseIf tm1d < thisday And tm2d > thisday Then
+                    timediff = 0.33
+                    
+                '请假2天或以上，最后一天
+                ElseIf tm1d < thisday And tm2d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(sbtm)
+                    
+                '请假2天或以上，第一天
+                ElseIf tm1d = thisday And tm2d > thisday Then
+                    timediff = TimeValue(xbtm) - TimeValue(tm1h)
+                End If
+                
+                td = Round(timediff * 24, 1)
+                
+                '如果是研发  <=2.5h 算 0.5d ，>2.5 算 1d  ;如果不是研发 <=3h 算 0.5d ，>3 算 1d
+                If (Sheets("月度汇总").Cells(j, 2) Like "*研发*") Then
+                    If td >= 2.5 Then
+                        dxday = 1
+                    End If
+                Else
+                    If td >= 3 Then
+                        dxday = 1
+                    End If
+                
+                End If
+                
+                alldxday = alldxday + dxday
+                'MsgBox (staffname & " " & thisday & "号: 调休 " & dxday & vbCrLf & "total调休" & alldxday)
+                
+                '获取倒休时长
+                'If td > 0 And td < 1 Then
+                '    dxhour = 1
+                'Else
+                '    dxhour = td
+                'End If
+                'alldxhour = alldxhour + dxhour
+                
+                'MsgBox (staffname & " " & thisday & "号: 调休 " & dxhour & vbCrLf & "total调休" & alldxhour)
+                
+            End If
+            
+            
+             '-----------------chuchai出差--------------------------计算出差扣除补助天数 >4h =1d
+            
+            If (con Like "*出差*" And Left(con, 2) <> "休息") Then
+                tm = Split(Split(con, "出差")(1), "到")
+                tm1 = Split(tm(0), " ")
+                tm1d = Int(Split(tm1(0), "-")(1))
+                tm1h = tm1(1)
+                tm2 = Split(tm(1), " ")
+                tm2d = Int(Split(tm2(0), "-")(1))
+                tm2h = tm2(1)
+                
+                '请假一天，当天
+                If tm2d = thisday And tm1d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(tm1h)
+                    
+                '请假3天或以上，中间天
+                ElseIf tm1d < thisday And tm2d > thisday Then
+                    timediff = 0.33
+                    
+                '请假2天或以上，最后一天
+                ElseIf tm1d < thisday And tm2d = thisday Then
+                    timediff = TimeValue(tm2h) - TimeValue(sbtm)
+                    
+                '请假2天或以上，第一天
+                ElseIf tm1d = thisday And tm2d > thisday Then
+                    timediff = TimeValue(xbtm) - TimeValue(tm1h)
+                End If
+                
+                td = Round(timediff * 24, 1)
+                
+                '>4h 算 1d
+                If td > 4 Then
+                    chuchai = 1
+                End If
+                
+                allchuchai = allchuchai + chuchai
+                'MsgBox (staffname & " " & thisday & "号: 出差 " & 出差 & vbCrLf & "出差" & allchuchai)
+                
+            End If
+            
+            
+            '-----------------chidao迟到早退--------------------------统计次数，一天有 迟到和早退 算两次
+            
+            If (con Like "*迟到*" Or con Like "*早退*") Then
+                
+                If (con Like "*迟到*") Then
+                    chidao = chidao + 1
+                End If
+                
+                If (con Like "*早退*") Then
+                    chidao = chidao + 1
+                End If
+                allchidao = allchidao + chidao
+                
+            End If
+            
+          
+             '-----------------queka缺卡--------------------------
+            
+            If (con Like "*缺卡*") Then
+            
+                queka = 1
+                allqueka = allqueka + queka
+                
+            End If
+            
+            
+            '-----------------kg旷工--------------------------
+            
+            If (con Like "*旷工*") Then
+                
+                kg = 1
+                allkg = allkg + kg
+                
+            End If
+          
+        Next
+
+        
+        '将各个统计结果 写入excel
+        
+        Sheets("出勤统计").Cells(m, 1) = staffname
+        
+        Sheets("出勤统计").Cells(m, 2) = staffdepart
+        
+        If allshijia > 0 Then
+            Sheets("出勤统计").Cells(m, 3) = allshijia
+        End If
+        If smshijia <> "" Then
+            Sheets("出勤统计").Cells(m, 3).Interior.ColorIndex = 3
+            Sheets("出勤统计").Cells(m, 3).AddComment Text:=smshijia
+            'Sheets("出勤统计").Cells(m, 3).Comment.Visible = True
+        End If
+        
+        If allbingjia > 0 Then
+        Sheets("出勤统计").Cells(m, 4) = allbingjia
+        End If
+        If smbingjia <> "" Then
+            Sheets("出勤统计").Cells(m, 4).Interior.ColorIndex = 3
+            Sheets("出勤统计").Cells(m, 4).AddComment Text:=smbingjia
+            'Sheets("出勤统计").Cells(m, 4).Comment.Visible = True
+        End If
+        
+        If allnianjia > 0 Then
+            Sheets("出勤统计").Cells(m, 5) = allnianjia
+        End If
+        
+        If alldxday > 0 Then
+            Sheets("出勤统计").Cells(m, 6) = alldxday
+        End If
+        
+        If alldxhour > 0 Then
+            Sheets("出勤统计").Cells(m, 7) = alldxhour
+        End If
+        
+        If allchuchai > 0 Then
+            Sheets("出勤统计").Cells(m, 8) = allchuchai
+        End If
+        
+        If allchidao > 0 Then
+            Sheets("出勤统计").Cells(m, 9) = allchidao
+        End If
+
+        If allqueka > 0 Then
+            Sheets("出勤统计").Cells(m, 10) = allqueka
+        End If
+
+        If allkg > 0 Then
+            Sheets("出勤统计").Cells(m, 11) = allkg
+        End If
+
+        m = m + 1
+    End If
+Next
+Sheets("出勤统计").Columns.EntireColumn.AutoFit
+Sheets("出勤统计").Rows.EntireRow.AutoFit
+MsgBox ("考勤情况统计完成！")
+End Sub
